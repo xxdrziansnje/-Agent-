@@ -1,4 +1,7 @@
 import time
+from dotenv import load_dotenv
+
+load_dotenv()
 
 import streamlit as st
 from agent.react_agent import ReactAgent

@@ -3,6 +3,9 @@
 # 内容总结 ：将检索到的相关文档内容进行整合和概括
 # 上下文构建 ：将检索到的信息与用户问题结合，形成完整的上下文
 
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from rag.vector_store import VectorStoreService
 from utils.prompt_loader import load_rag_prompts

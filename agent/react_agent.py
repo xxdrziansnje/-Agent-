@@ -1,3 +1,7 @@
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from langchain.agents import create_agent
 from model.factory import chat_model
 from utils.prompt_loader import load_system_prompts

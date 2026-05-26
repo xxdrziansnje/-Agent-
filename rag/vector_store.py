@@ -1,5 +1,9 @@
 import hashlib
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from utils.logger_handler import logger
 
 from langchain_chroma import Chroma

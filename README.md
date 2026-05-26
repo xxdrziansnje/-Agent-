@@ -130,6 +130,8 @@ git clone https://github.com/xxdrziansnje/-Agent-.git
 cd -Agent-
 ```
 
+> **注意：** 后续所有命令都在项目根目录（`-Agent-` 文件夹下）执行，不要进入子目录。
+
 ### 2. 创建虚拟环境（推荐）
 
 ```bash
@@ -228,15 +230,21 @@ class ChatModelFactory(BaseModelFactory):
 首次运行前，需要将文档向量化并存入 Chroma：
 
 ```bash
-python rag/vector_store.py
+python -m rag.vector_store
 ```
+
+> **为什么用 `python -m` 而不是 `python rag/vector_store.py`？**
+> 项目内部使用了相对导入（如 `from utils.xxx import ...`），直接运行 `.py` 文件会找不到模块。
+> `python -m` 会把项目根目录加入 Python 搜索路径，确保所有模块都能正确导入。
 
 > **这一步做了什么？**
 > 1. 扫描 `data/` 目录下的所有 `.txt` 和 `.pdf` 文件
 > 2. 对每个文件计算 MD5，跳过已入库的（防止重复）
 > 3. 将文本按 200 字符切块，重叠 20 字符（保证上下文连贯）
 > 4. 使用 `text-embedding-v4` 模型将文本转为向量
-> 5. 存入本地 Chroma 向量数据库
+> 5. 存入本地 Chroma 向量数据库（生成 `chroma_db/` 目录）
+>
+> 首次运行需要调用阿里云的向量模型 API，会消耗少量 Token。后续运行如果文档没变化会自动跳过。
 
 ### 6. 启动应用
 
@@ -245,6 +253,11 @@ streamlit run app.py
 ```
 
 浏览器会自动打开 `http://localhost:8501`，即可开始对话。
+
+> **启动后看到 `Agent 初始化完成` 说明一切正常。** 如果报错，优先检查：
+> 1. `.env` 文件是否存在且 Key 正确
+> 2. 是否在项目根目录运行
+> 3. 虚拟环境是否已激活
 
 ---
 
@@ -377,17 +390,33 @@ report_prompt_path: prompts/report_prompt.txt
 
 ## 常见问题
 
+**Q: 报错 `ModuleNotFoundError: No module named 'xxx'`？**
+A: 确保你在**项目根目录**下运行命令，且使用 `python -m` 方式执行模块（如 `python -m rag.vector_store`），不要直接 `python rag/vector_store.py`。
+
 **Q: 报错 `DASHSCOPE_API_KEY` 相关错误？**
-A: 检查 `.env` 文件是否存在且 Key 是否正确。注意 Key 前缀是 `sk-`，不要有多余的空格或引号。
+A: 检查以下几点：
+1. `.env` 文件是否存在于项目根目录
+2. Key 是否正确（前缀是 `sk-`，不要有多余的空格或引号）
+3. 如果刚创建 `.env`，重启一下终端再试
 
 **Q: 知识库初始化报错？**
-A: 确保 `data/` 目录下有 `.txt` 或 `.pdf` 文件，且已正确安装 `pypdf`。
+A: 确保 `data/` 目录下有 `.txt` 或 `.pdf` 文件，且已正确安装 `pypdf`（`pip install pypdf`）。
 
 **Q: Chroma 数据库报错？**
-A: 删除 `chroma_db/` 目录后重新运行 `python rag/vector_store.py`。
+A: 删除项目下的 `chroma_db/` 目录后重新运行 `python -m rag.vector_store`。
 
 **Q: 模型响应很慢？**
-A: 通义千问 qwen3-max 是较大的模型，首次调用可能较慢。可以换用 `qwen-plus` 或 `qwen-turbo`（修改 `config/rag.yml` 中的 `chat_model_name`）。
+A: 通义千问 qwen3-max 是较大的模型，首次调用可能较慢。可以换用更快的模型，修改 `config/rag.yml` 中的 `chat_model_name`：
+- `qwen-turbo` — 最快，适合简单问答
+- `qwen-plus` — 平衡速度和质量
+- `qwen3-max` — 最强，但较慢
+
+**Q: 测试模型是否配置成功？**
+A: 在项目根目录运行：
+```bash
+python -c "from dotenv import load_dotenv; load_dotenv(); from model.factory import chat_model; print(chat_model.invoke('你好').content)"
+```
+如果能正常返回回答，说明配置成功。
 
 ---
 
