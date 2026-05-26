@@ -136,7 +136,7 @@ flowchart TB
 ├────────────────────────────────────────────────────────────┤
 │  🤖 Agent：                                                │
 │                                                            │
-│  # 📋 黑马程序员扫地机器人使用情况报告与保养建议              │
+│  # 📋 扫地机器人使用情况报告与保养建议                        │
 │                                                            │
 │  ## 一、基本信息                                            │
 │  - 👤 用户ID：1003                                         │
@@ -435,7 +435,7 @@ report_prompt_path: prompts/report_prompt.txt
 🔧 Agent 行动：调用 get_current_month()     → 获取 "2025-06"
 🔧 Agent 行动：调用 fill_context_for_report() → 触发中间件切换提示词
 🔧 Agent 行动：调用 fetch_external_data()   → 获取使用数据
-💬 Agent 回答：# 📋 黑马程序员扫地机器人使用情况报告...
+💬 Agent 回答：# 📋 扫地机器人使用情况报告...
 ```
 
 > 💡 **提示词切换机制（关键设计）：**
