@@ -1,0 +1,300 @@
+================================================================================
+  智扫通机器人智能客服 — 项目架构分析
+================================================================================
+
+【项目概述】
+基于 LangGraph ReAct Agent 的智能客服系统，使用 Streamlit 做前端、
+通义千问(qwen3-max)做推理、Chroma 做向量检索，模拟扫地机器人品牌的
+客服问答和使用报告生成场景。
+
+================================================================================
+  一、项目架构全景图（Mermaid）
+================================================================================
+
+graph TB
+    subgraph 入口层
+        A[app.py - Streamlit Web UI]
+    end
+
+    subgraph Agent核心
+        B[ReactAgent - react_agent.py]
+        B1[create_agent - LangGraph ReAct]
+        B2[7个Tools]
+        B3[3个Middleware]
+    end
+
+    subgraph 工具层
+        T1[rag_summarize - RAG检索摘要]
+        T2[get_weather - 模拟天气]
+        T3[get_user_location - 模拟定位]
+        T4[get_user_id - 模拟用户ID]
+        T5[get_current_month - 模拟月份]
+        T6[fetch_external_data - CSV数据查询]
+        T7[fill_context_for_report - 上下文切换触发器]
+    end
+
+    subgraph 中间件层
+        M1[monitor_tool - 工具调用监控]
+        M2[log_before_model - LLM调用日志]
+        M3[report_prompt_switch - 动态提示切换]
+    end
+
+    subgraph RAG层
+        R1[RagSummarizeService - rag_service.py]
+        R2[VectorStoreService - vector_store.py]
+        R3[(Chroma 向量数据库)]
+    end
+
+    subgraph 基础设施
+        F1[ChatModelFactory - qwen3-max]
+        F2[EmbeddingsFactory - text-embedding-v4]
+        C1[config_handler - YAML配置单例]
+        P1[prompt_loader - 提示词加载器]
+        L1[logger_handler - 日志系统]
+        FH[file_handler - MD5/PDF/TXT处理]
+    end
+
+    A --> B --> B1
+    B1 --> B2 --> T1 & T2 & T3 & T4 & T5 & T6 & T7
+    B1 --> B3 --> M1 & M2 & M3
+    B --> F1 --> C1
+    B --> P1 --> C1
+    T1 --> R1 --> R2 --> R3
+    R2 --> F2
+    R2 --> FH
+    T6 --> FH
+    T7 -.->|"设置 context.report=true"| M3
+    M3 -.->|"切换提示词"| P1
+
+================================================================================
+  二、核心交互流程 — 时序图（Mermaid）
+================================================================================
+
+sequenceDiagram
+    actor User as 用户
+    participant UI as Streamlit app.py
+    participant Agent as ReactAgent
+    participant MW as Middleware
+    participant LLM as qwen3-max
+    participant Tool as Tools
+    participant RAG as RAG服务
+    participant DB as Chroma
+
+    Note over User,DB: === 流程A: 普通问答 ===
+
+    User->>UI: 输入问题
+    UI->>Agent: execute_stream(query)
+    Agent->>Agent: 构建输入 {messages:[HumanMessage]}
+    Agent->>LLM: stream(context={report:false})
+    activate LLM
+    MW-->>LLM: log_before_model(记录调用)
+    LLM->>LLM: ReAct推理，决定调用工具
+    LLM->>Tool: 执行工具 (如 rag_summarize)
+    MW-->>Tool: monitor_tool(记录前后)
+    Tool->>RAG: 检索相关文档
+    RAG->>DB: similarity_search(k=3)
+    DB-->>RAG: Top-3 文档片段
+    RAG->>LLM: LCEL链: 格式化->LLM->摘要
+    LLM-->>Tool: 返回结果
+    Tool-->>LLM: 工具结果
+    deactivate LLM
+    LLM->>LLM: 综合结果生成最终回答
+    LLM-->>Agent: 流式输出字符块
+    Agent-->>UI: yield 字符块(+10ms延迟)
+    UI-->>User: 打字机效果渲染
+
+    Note over User,DB: === 流程B: 报告生成 ===
+
+    User->>UI: "帮我生成使用报告"
+    UI->>Agent: execute_stream(...)
+    Agent->>LLM: stream(context={report:false})
+    LLM->>Tool: get_user_id() -> get_current_month()
+    LLM->>Tool: fill_context_for_report()
+    MW-->>MW: monitor_tool 捕获, 设置 context.report=true
+    MW-->>LLM: report_prompt_switch 替换为 report_prompt.txt
+    LLM->>Tool: fetch_external_data(uid, month)
+    LLM->>Tool: rag_summarize(保养建议)
+    LLM->>LLM: 生成 Markdown 报告
+    LLM-->>UI: 流式输出完整报告
+
+================================================================================
+  三、提示切换机制 — 状态图（Mermaid）
+================================================================================
+
+stateDiagram-v2
+    [*] --> NormalMode: 初始 context.report=false
+    NormalMode --> NormalMode: 加载 main_prompt.txt
+    NormalMode --> TriggerCheck: Agent决定调用 fill_context_for_report()
+    TriggerCheck --> MiddlewareCapture: monitor_tool 中间件捕获
+    MiddlewareCapture --> ContextSwitch: 设置 context["report"] = True
+    ContextSwitch --> ReportMode: 下一次 LLM 调用前
+    ReportMode --> ReportMode: report_prompt_switch 切换加载 report_prompt.txt
+
+    NOTE: fill_context_for_report 工具本身无实际业务逻辑，仅作为"开关"触发器
+
+================================================================================
+  四、知识库加载 ETL 流程（Mermaid）
+================================================================================
+
+flowchart LR
+    subgraph 文件扫描
+        S1[扫描 data/ 目录] --> S2[过滤 .txt .pdf]
+    end
+
+    subgraph 去重检查
+        S2 --> S3{md5.text 存在该MD5?}
+        S3 -->|是| S4[跳过文件]
+        S3 -->|否| S5[读取文件内容]
+    end
+
+    subgraph 文档处理
+        S5 --> S6{文件类型}
+        S6 -->|.txt| S7[TextLoader]
+        S6 -->|.pdf| S8[PyPDFLoader]
+        S7 --> S9[Document 对象列表]
+        S8 --> S9
+    end
+
+    subgraph 向量化入库
+        S9 --> S10[RecursiveCharacterTextSplitter]
+        S10 --> S11[DashScopeEmbeddings]
+        S11 --> S12[(Chroma rag/chroma_db/)]
+        S12 --> S13[写入 MD5 到 md5.text]
+    end
+
+    参数: chunk_size=200, chunk_overlap=20, k=3
+
+================================================================================
+  五、结构说明表格
+================================================================================
+
+【5.1 模块职责】
+
+模块          | 文件                           | 职责                          | 关键类/函数
+--------------|-------------------------------|------------------------------|-----------------------------
+入口          | app.py                        | Streamlit Web UI             | capture() 缓冲+延迟输出
+Agent核心     | agent/react_agent.py          | 封装 LangGraph ReAct Agent   | ReactAgent / execute_stream()
+工具集        | agent/tools/agent_tools.py    | 7个 @tool LangChain 工具     | rag_summarize / fill_context_for_report
+中间件        | agent/tools/middleware.py     | 工具/LLM调用钩子              | monitor_tool / report_prompt_switch
+模型工厂      | model/factory.py              | LLM和嵌入模型单例             | ChatModelFactory / EmbeddingsFactory
+RAG服务       | rag/rag_service.py            | 检索+LLM摘要 LCEL链          | RagSummarizeService.rag_summarize()
+向量存储      | rag/vector_store.py           | Chroma管理+文档ETL           | VectorStoreService.load_document()
+配置加载      | utils/config_handler.py       | YAML配置模块级单例            | rag_conf / chroma_conf / agent_conf
+提示加载      | utils/prompt_loader.py        | 从磁盘读取提示词 .txt         | load_system_prompts() / load_report_prompts()
+文件处理      | utils/file_handler.py         | MD5去重 / PDF/TXT加载器      | get_file_md5_hex() / pdf_loader()
+日志          | utils/logger_handler.py       | 控制台+文件双通道日志         | get_logger()
+路径工具      | utils/path_tool.py            | 相对路径转绝对路径            | get_abs_path()
+
+【5.2 7个工具一览】
+
+# | 工具名                     | 类型     | 输入          | 输出               | 备注
+--|---------------------------|---------|--------------|-------------------|---------------------------
+1 | rag_summarize             | RAG检索  | 用户查询文本   | AI摘要+参考资料     | LCEL链: 检索->格式化->LLM摘要
+2 | get_weather               | 模拟API  | 城市名        | 固定天气字符串      | 示例: "深圳晴天26°C"
+3 | get_user_location         | 模拟定位  | 无           | 随机城市名          | 从[深圳,合肥,杭州]随机取
+4 | get_user_id               | 模拟鉴权  | 无           | 随机10位ID          | 1001~1010
+5 | get_current_month         | 模拟时间  | 无           | 随机年月字符串      | 12个预设月份
+6 | fetch_external_data       | 文件查询  | user_id,month| CSV中用户使用记录   | 读取 records.csv
+7 | fill_context_for_report   | 触发器    | 无           | 固定字符串          | 无业务逻辑，仅触发提示切换
+
+【5.3 3个中间件一览】
+
+中间件                | 装饰器             | 触发时机           | 作用
+---------------------|-------------------|-------------------|-------------------------------------------
+monitor_tool         | @wrap_tool_call   | 每个工具执行前后    | 日志记录 + 捕获 fill_context_for_report 设置 context.report=True
+log_before_model     | @before_model     | 每次LLM调用前      | 记录状态快照（消息数、最后消息内容）
+report_prompt_switch | @dynamic_prompt   | 每次LLM调用前      | 根据 context.report 选择 main_prompt.txt 或 report_prompt.txt
+
+【5.4 配置文件一览】
+
+文件                  | 关键字段                                              | 用途
+---------------------|------------------------------------------------------|------------------
+config/rag.yml        | chat_model_name: qwen3-max, embedding: text-embedding-v4 | 模型选型
+config/chroma.yml     | chunk_size:200, chunk_overlap:20, k:3                 | 向量库和分割参数
+config/prompts.yml    | 三个提示词 .txt 路径                                   | 提示词文件定位
+config/agent.yml      | external_data_path                                    | 外部数据CSV路径
+
+【5.5 数据文件一览】
+
+文件                              | 格式  | 内容
+---------------------------------|------|--------------------
+data/扫地机器人100问.pdf           | PDF  | 产品FAQ知识库
+data/扫地机器人100问2.txt          | TXT  | 补充FAQ
+data/扫拖一体机器人100问.txt       | TXT  | 扫拖一体机型FAQ
+data/故障排除.txt                  | TXT  | 故障排查手册
+data/维护保养.txt                  | TXT  | 保养指南
+data/选购指南.txt                  | TXT  | 选购建议
+data/external/records.csv         | CSV  | 10用户×12月模拟使用记录
+
+================================================================================
+  六、组件依赖关系图（Mermaid）
+================================================================================
+
+graph TD
+    app.py --> react_agent.py
+    react_agent.py --> factory.py
+    react_agent.py --> prompt_loader.py
+    react_agent.py --> agent_tools.py
+    react_agent.py --> middleware.py
+
+    agent_tools.py --> rag_service.py
+    agent_tools.py --> config_handler.py
+    agent_tools.py --> path_tool.py
+    agent_tools.py --> logger_handler.py
+
+    middleware.py --> prompt_loader.py
+    middleware.py --> logger_handler.py
+
+    rag_service.py --> vector_store.py
+    rag_service.py --> prompt_loader.py
+    rag_service.py --> factory.py
+
+    vector_store.py --> factory.py
+    vector_store.py --> path_tool.py
+    vector_store.py --> config_handler.py
+    vector_store.py --> file_handler.py
+    vector_store.py --> logger_handler.py
+
+    config_handler.py --> path_tool.py
+    prompt_loader.py --> path_tool.py
+    prompt_loader.py --> config_handler.py
+    prompt_loader.py --> logger_handler.py
+    file_handler.py --> logger_handler.py
+    logger_handler.py --> path_tool.py
+
+================================================================================
+  七、一句话总结
+================================================================================
+
+LangGraph ReAct Agent 封装了 7 个工具和 3 个中间件，通过 fill_context_for_report
+工具 + monitor_tool 中间件 + report_prompt_switch 中间件实现了运行时动态提示切换，
+从而在"普通客服问答"和"使用报告生成"两种模式间无缝切换。RAG 层用 Chroma 做向量检索，
+通义千问做摘要生成，全链路支持流式输出。
+
+================================================================================
+  八、关键设计要点
+================================================================================
+
+1. 提示切换 (Middleware-Driven)
+   fill_context_for_report 工具存在的唯一目的是在运行时上下文中设置布尔标志，
+   然后由 report_prompt_switch 中间件读取以交换全部系统提示。
+   这是一种基于上下文的提示路由模式。
+
+2. 模拟数据层
+   所有数据存储端点（天气、位置、用户ID、月份、使用记录）当前返回硬编码/随机值。
+   records.csv 是唯一包含真实模拟数据的文件，涵盖10用户×12月数据。
+
+3. 双重 Chroma 数据库
+   agent/chroma_db/ — Agent层数据库
+   rag/chroma_db/    — RAG层数据库，动态填充自 data/ 目录
+
+4. MD5 去重
+   md5.text 作为简单注册表，防止文档被重复加载到向量存储中。
+
+5. 导入时单例
+   所有核心单例（chat_model, embed_model, rag_conf, chroma_conf,
+   prompts_conf, agent_conf, logger）均在导入时创建，无需显式初始化。
+
+6. 流式输出
+   Streamlit 端通过 capture() 内部函数缓冲字符块，增加10ms字符间延迟
+   实现打字机效果渲染。

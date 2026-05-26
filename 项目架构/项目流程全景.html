@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>智扫通 — 项目流程全景</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --orange: #d2991d;
+    --purple: #a371f7;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding:24px; }
+  h1 { text-align:center; font-size:28px; margin-bottom:8px; }
+  .subtitle { text-align:center; color:#8b949e; margin-bottom:32px; font-size:14px; }
+  .tabs { display:flex; gap:4px; margin-bottom:24px; flex-wrap:wrap; justify-content:center; }
+  .tab { padding:8px 18px; border:1px solid var(--border); border-radius:6px; cursor:pointer; font-size:13px; background:var(--card); transition:.15s; user-select:none; }
+  .tab:hover { border-color:var(--accent); }
+  .tab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .panel { display:none; }
+  .panel.active { display:block; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:20px; margin-bottom:20px; }
+  .card h2 { font-size:16px; margin-bottom:12px; color:var(--accent); }
+  .mermaid { display:flex; justify-content:center; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; }
+  .badge-g { background:#1b3a1b; color:var(--green); }
+  .badge-o { background:#3a2e1b; color:var(--orange); }
+  .badge-p { background:#2a1b3a; color:var(--purple); }
+  .badge-b { background:#1b2a3a; color:var(--accent); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .mini-card { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:14px; }
+  .mini-card h3 { font-size:13px; margin-bottom:6px; }
+  .mini-card p { font-size:12px; color:#8b949e; line-height:1.5; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { background:#21262d; text-align:left; padding:8px 12px; font-weight:600; }
+  td { padding:8px 12px; border-bottom:1px solid var(--border); }
+  tr:hover td { background:#1c2128; }
+  .flow-arrow { text-align:center; color:var(--accent); font-size:20px; margin:4px 0; }
+  @media (max-width:768px) { .grid2, .grid3 { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+
+<h1>🤖 智扫通机器人智能客服</h1>
+<p class="subtitle">LangGraph ReAct Agent + 通义千问 + Chroma · 全流程可视化</p>
+
+<!-- TABS -->
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('arch')">🏗 架构全景</div>
+  <div class="tab" onclick="switchTab('seq')">⏱ 交互时序</div>
+  <div class="tab" onclick="switchTab('prompt')">🔀 提示切换</div>
+  <div class="tab" onclick="switchTab('etl')">📥 知识入库</div>
+  <div class="tab" onclick="switchTab('tools')">🔧 工具矩阵</div>
+  <div class="tab" onclick="switchTab('deps')">📦 模块依赖</div>
+</div>
+
+<!-- TAB 1: 架构全景 -->
+<div id="arch" class="panel active">
+  <div class="card">
+    <h2>系统分层架构</h2>
+    <div class="mermaid">
+graph TB
+    subgraph L1["🖥 表现层"]
+        A["app.py<br/>Streamlit 聊天界面"]
+    end
+
+    subgraph L2["🧠 Agent 编排层"]
+        direction TB
+        B["ReactAgent<br/>react_agent.py"]
+        B1["create_agent()<br/>LangGraph ReAct 引擎"]
+        B --- B1
+    end
+
+    subgraph L3["🔧 工具层 (7 Tools)"]
+        T1["rag_summarize<br/>知识检索"]
+        T4["fetch_external_data<br/>记录查询"]
+        T7["fill_context_for_report<br/>⚡模式开关"]
+        T-etc["get_weather / location<br/>get_user_id / month<br/>(模拟数据)"]
+    end
+
+    subgraph L4["🔗 中间件层 (3 Middleware)"]
+        M1["monitor_tool<br/>@wrap_tool_call"]
+        M2["log_before_model<br/>@before_model"]
+        M3["report_prompt_switch<br/>@dynamic_prompt ⚡"]
+    end
+
+    subgraph L5["📚 RAG 层"]
+        R1["RagSummarizeService<br/>检索 + LLM摘要链"]
+        R2["VectorStoreService<br/>Chroma 向量库管理"]
+        R3[("Chroma DB<br/>rag/chroma_db/")]
+        R1 --> R2 --> R3
+    end
+
+    subgraph L6["⚙ 基础设施"]
+        F1["ChatModelFactory<br/>qwen3-max"]
+        F2["EmbeddingsFactory<br/>text-embedding-v4"]
+        C1["YAML 配置单例"]
+        P1["Prompt 加载器"]
+    end
+
+    A --> B
+    B1 --> T1 & T4 & T7 & T-etc
+    B1 --> M1 & M2 & M3
+    T1 --> R1
+    T7 -.->|"设置标志"| M1
+    M1 -.->|"context.report=true"| M3
+    M3 -.->|"切换提示词文件"| P1
+    B --> F1 & F2
+    R2 --> F2
+    </div>
+</div>
+
+  <div class="grid2">
+    <div class="mini-card">
+      <h3><span class="badge badge-g">模式一</span> 普通问答</h3>
+      <p>用户提问 → Agent(ReAct推理) → 调用 rag_summarize → Chroma检索 → LLM摘要 → 返回答案</p>
+    </div>
+    <div class="mini-card">
+      <h3><span class="badge badge-o">模式二</span> 报告生成</h3>
+      <p>用户请求报告 → Agent获取用户数据 → fill_context_for_report 触发切换 → 加载 report_prompt → 生成Markdown报告</p>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: 交互时序 -->
+<div id="seq" class="panel">
+  <div class="card">
+    <h2><span class="badge badge-g">普通问答</span> 完整链路</h2>
+    <div class="mermaid">
+sequenceDiagram
+    actor U as 👤 用户
+    participant UI as Streamlit
+    participant A as ReactAgent
+    participant MW as Middleware
+    participant LLM as qwen3-max
+    participant T as 工具
+    participant RAG as RAG服务
+    participant DB as Chroma
+
+    U->>UI: "扫地机器人报E03怎么办"
+    UI->>A: execute_stream(query)
+    A->>LLM: agent.stream( context={report:false} )
+    MW-->>LLM: log_before_model → 记录调用
+
+    rect rgb(22,27,34)
+        Note over LLM,T: ReAct 推理循环 (最多5轮)
+        LLM->>LLM: Thought: 用户询问故障，需要检索知识库
+        LLM->>T: Action: rag_summarize("E03故障")
+        MW-->>T: monitor_tool → 记录工具调用
+        T->>RAG: retriever.invoke(query)
+        RAG->>DB: similarity_search(k=3)
+        DB-->>RAG: [文档1] [文档2] [文档3]
+        RAG->>RAG: 格式化 → 【参考资料1】...
+        RAG->>LLM: LCEL链: Prompt+Context → LLM → 摘要
+        LLM-->>T: "E03表示滚刷缠绕，请清理滚刷"
+        MW-->>T: monitor_tool → 记录完成
+        T-->>LLM: Observation: E03故障原因...
+        LLM->>LLM: Thought: 信息足够，可以回答
+    end
+
+    LLM-->>A: 流式输出字符块
+    A-->>UI: yield 逐字(+10ms延迟)
+    UI-->>U: ✨ 打字机效果渲染
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="badge badge-o">报告生成</span> 完整链路（含提示切换）</h2>
+    <div class="mermaid">
+sequenceDiagram
+    actor U as 👤 用户
+    participant A as ReactAgent
+    participant MW as Middleware
+    participant LLM as qwen3-max
+    participant T as 工具
+    participant CSV as records.csv
+    participant RAG as RAG服务
+
+    U->>A: "帮我生成使用报告"
+    A->>LLM: stream( context={report:false} )
+    Note over LLM: 当前提示词: main_prompt.txt
+
+    rect rgb(22,27,34)
+        LLM->>T: get_user_id() → "1003"
+        LLM->>T: get_current_month() → "2025-03"
+        LLM->>T: fill_context_for_report()
+        MW-->>MW: ⚡ monitor_tool 捕获!
+        MW-->>MW: context["report"] = True
+    end
+
+    Note over LLM: ⚡ 提示词切换: report_prompt.txt
+
+    rect rgb(58,46,27)
+        LLM->>T: fetch_external_data("1003","2025-03")
+        T->>CSV: 查询用户1003, 3月记录
+        CSV-->>T: {月份使用数据}
+        LLM->>T: rag_summarize("扫地机器人保养建议")
+        T->>RAG: 检索保养知识
+        RAG-->>T: 保养相关文档
+        LLM->>LLM: 综合数据 + 知识 → 生成报告
+    end
+
+    LLM-->>A: 流式输出 Markdown 报告
+    A-->>U: ✨ 使用报告 + 保养建议
+    </div>
+  </div>
+</div>
+
+<!-- TAB 3: 提示切换 -->
+<div id="prompt" class="panel">
+  <div class="card">
+    <h2>提示切换三部曲</h2>
+    <div class="mermaid">
+stateDiagram-v2
+    direction LR
+
+    [*] --> 普通模式
+    普通模式 --> 普通模式: main_prompt.txt<br/>标准客服 ReAct
+
+    普通模式 --> 触发: Agent调用<br/>fill_context_for_report()
+
+    state 触发 {
+        [*] --> 工具执行
+        工具执行 --> 中间件捕获: monitor_tool<br/>检测到该工具
+        中间件捕获 --> 设置标志: context["report"]=True
+    }
+
+    触发 --> 切换完成: 下次LLM调用前
+
+    切换完成 --> 报告模式: report_prompt_switch<br/>检测 context.report
+    报告模式 --> 报告模式: report_prompt.txt<br/>强制工具链执行
+    </div>
+  </div>
+
+  <div class="grid3">
+    <div class="mini-card">
+      <h3><span class="badge badge-b">1</span> 触发器</h3>
+      <p><code>fill_context_for_report</code> 工具被 Agent 调用，本身不做任何业务，只是一个"空转"的开关</p>
+    </div>
+    <div class="mini-card">
+      <h3><span class="badge badge-o">2</span> 捕获器</h3>
+      <p><code>monitor_tool</code> 中间件检测到该工具执行，修改运行时 context，设置 report=True</p>
+    </div>
+    <div class="mini-card">
+      <h3><span class="badge badge-p">3</span> 切换器</h3>
+      <p><code>report_prompt_switch</code> 在下次 LLM 调用前读 context，替换整个系统提示词文件</p>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 4: ETL -->
+<div id="etl" class="panel">
+  <div class="card">
+    <h2>知识库加载流水线</h2>
+    <div class="mermaid">
+flowchart LR
+    A["📁 data/ 目录"] --> B{"文件类型"}
+    B -->|".txt"| C["TextLoader"]
+    B -->|".pdf"| D["PyPDFLoader"]
+    C --> E["Document 对象"]
+    D --> E
+    E --> F{"MD5去重<br/>md5.text"}
+    F -->|"已有"| G["⏭ 跳过"]
+    F -->|"新文件"| H["✂ RecursiveCharacterTextSplitter<br/>chunk=200 overlap=20"]
+    H --> I["🔢 DashScopeEmbeddings<br/>text-embedding-v4"]
+    I --> J[("🗄 Chroma<br/>rag/chroma_db/")]
+    J --> K["✅ 注册MD5"]
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="mini-card">
+      <h3>分割策略</h3>
+      <p>分隔符: <code>\n\n</code> → <code>\n</code> → <code>。</code> → <code>！</code> → <code>？</code> → 空格<br/>块大小 200 字符，重叠 20 字符</p>
+    </div>
+    <div class="mini-card">
+      <h3>检索参数</h3>
+      <p>每次查询返回 <b>Top-3</b> 最相似文档片段<br/>使用余弦相似度排序</p>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 5: 工具矩阵 -->
+<div id="tools" class="panel">
+  <div class="card">
+    <h2>7 工具 × 3 中间件 协作关系</h2>
+    <div class="mermaid">
+graph LR
+    subgraph Tools["7 个 @tool 工具"]
+        T1["rag_summarize<br/>📚 RAG检索"]
+        T2["get_weather<br/>🌤 模拟"]
+        T3["get_user_location<br/>📍 模拟"]
+        T4["get_user_id<br/>🆔 模拟"]
+        T5["get_current_month<br/>📅 模拟"]
+        T6["fetch_external_data<br/>📊 CSV查询"]
+        T7["fill_context_for_report<br/>⚡ 空触发器"]
+    end
+
+    subgraph MW["3 个中间件"]
+        M1["monitor_tool<br/>@wrap_tool_call"]
+        M2["log_before_model<br/>@before_model"]
+        M3["report_prompt_switch<br/>@dynamic_prompt"]
+    end
+
+    T1 & T2 & T3 & T4 & T5 & T6 & T7 -->|"每次工具调用"| M1
+    M3 -->|"选择提示词"| P[/"main_prompt.txt<br/>或 report_prompt.txt"\]
+    M1 -->|"检测到T7 → 设置标志"| M3
+
+    style T7 fill:#d2991d,stroke:#d2991d,color:#000
+    style M1 fill:#d2991d,stroke:#d2991d,color:#000
+    style M3 fill:#a371f7,stroke:#a371f7,color:#fff
+    </div>
+  </div>
+
+  <table>
+    <tr><th>#</th><th>工具</th><th>数据来源</th><th>真实/模拟</th><th>作用</th></tr>
+    <tr><td>1</td><td>rag_summarize</td><td>Chroma 向量库</td><td><span class="badge badge-g">真实RAG</span></td><td>检索知识库→LLM摘要</td></tr>
+    <tr><td>2</td><td>get_weather</td><td>硬编码</td><td><span class="badge badge-o">模拟</span></td><td>返回固定天气字符串</td></tr>
+    <tr><td>3</td><td>get_user_location</td><td>随机列表</td><td><span class="badge badge-o">模拟</span></td><td>随机城市名</td></tr>
+    <tr><td>4</td><td>get_user_id</td><td>随机列表</td><td><span class="badge badge-o">模拟</span></td><td>1001~1010随机ID</td></tr>
+    <tr><td>5</td><td>get_current_month</td><td>随机列表</td><td><span class="badge badge-o">模拟</span></td><td>12个预设月份随机</td></tr>
+    <tr><td>6</td><td>fetch_external_data</td><td>records.csv</td><td><span class="badge badge-g">真实文件</span></td><td>查询用户使用记录</td></tr>
+    <tr><td>7</td><td>fill_context_for_report</td><td>—</td><td><span class="badge badge-p">触发器</span></td><td>无业务逻辑，仅触发提示切换</td></tr>
+  </table>
+</div>
+
+<!-- TAB 6: 模块依赖 -->
+<div id="deps" class="panel">
+  <div class="card">
+    <h2>全部 .py 文件依赖关系</h2>
+    <div class="mermaid">
+graph TD
+    A["app.py"] --> B["react_agent.py"]
+    B --> F["factory.py"]
+    B --> PL["prompt_loader.py"]
+    B --> AT["agent_tools.py"]
+    B --> MW["middleware.py"]
+
+    AT --> RS["rag_service.py"]
+    AT --> CH["config_handler.py"]
+    AT --> PT["path_tool.py"]
+    AT --> LH["logger_handler.py"]
+
+    MW --> PL
+    MW --> LH
+
+    RS --> VS["vector_store.py"]
+    RS --> PL
+    RS --> F
+
+    VS --> F
+    VS --> PT
+    VS --> CH
+    VS --> FH["file_handler.py"]
+    VS --> LH
+
+    CH --> PT
+    PL --> PT
+    PL --> CH
+    PL --> LH
+    FH --> LH
+    LH --> PT
+
+    style A fill:#3fb950,stroke:#3fb950,color:#000
+    style B fill:#58a6ff,stroke:#58a6ff,color:#000
+    style F fill:#a371f7,stroke:#a371f7,color:#fff
+    style RS fill:#a371f7,stroke:#a371f7,color:#fff
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="mini-card">
+      <h3>单例依赖（导入时创建）</h3>
+      <p><code>factory.py</code> → chat_model, embed_model<br/>
+         <code>config_handler.py</code> → rag_conf, chroma_conf, prompts_conf, agent_conf<br/>
+         <code>logger_handler.py</code> → logger</p>
+    </div>
+    <div class="mini-card">
+      <h3>数据流向</h3>
+      <p>用户输入 → Agent → LLM推理 → 工具调用 → RAG/CSV → 结果 → LLM综合 → 流式输出</p>
+    </div>
+  </div>
+</div>
+
+<script>
+mermaid.initialize({ startOnLoad:true, theme:'dark', securityLevel:'loose' });
+function switchTab(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>
